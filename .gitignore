@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 
 # database & logs
-*.db
 *.log
 
 # venv

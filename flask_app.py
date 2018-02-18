@@ -1,5 +1,5 @@
 from threading import Lock
-from flask import Flask, render_template, request, session
+from flask import Flask, jsonify, render_template, request, session
 from flask_socketio import emit, SocketIO
 from json import dumps, load
 from os.path import abspath, dirname, join
@@ -34,7 +34,7 @@ def configure_socket(app):
 def import_cities():
     with open(join(path_app, 'data', 'cities.json')) as data:
         for city_dict in load(data):
-            if int(city_dict['population']) < 500000:
+            if int(city_dict['population']) < 800000:
                 continue
             city = City(**city_dict)
             db.session.add(city)
@@ -58,7 +58,7 @@ app, socketio, tsp = create_app()
 
 
 @app.route('/', methods=['GET', 'POST'])
-def algorithm():
+def index():
     session['best'] = float('inf')
     session['crossover'], session['mutation'] = 'OC', 'Swap'
     view = request.form['view'] if 'view' in request.form else '2D'
@@ -77,12 +77,10 @@ def algorithm():
         )
 
 
-def socket_emit(method):
-    @socketio.on(method)
-    def function():
-        session['best'] = float('inf')
-        emit('draw', (*getattr(tsp, method)(), False))
-    return function
+@app.route('/<algorithm>', methods=['POST'])
+def algorithm(algorithm):
+    session['best'] = float('inf')
+    return jsonify(*getattr(tsp, algorithm)(), False)
 
 
 @socketio.on('genetic_algorithm')
@@ -94,9 +92,6 @@ def genetic_algorithm(data):
         session['best'] = length
         emit('draw', ([best], [length], True))
 
-
-for algorithm in tsp.algorithms:
-    socket_emit(algorithm)
 
 if __name__ == '__main__':
     socketio.run(app)
