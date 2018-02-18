@@ -1,6 +1,5 @@
 from threading import Lock
 from flask import Flask, jsonify, render_template, request, session
-from flask_socketio import emit, SocketIO
 from json import dumps, load
 from os.path import abspath, dirname, join
 from sqlalchemy import exc as sql_exception
@@ -24,13 +23,6 @@ def configure_database(app):
     db.init_app(app)
 
 
-def configure_socket(app):
-    async_mode = None
-    socketio = SocketIO(app, async_mode=async_mode)
-    thread_lock = Lock()
-    return socketio
-
-
 def import_cities():
     with open(join(path_app, 'data', 'cities.json')) as data:
         for city_dict in load(data):
@@ -47,14 +39,13 @@ def create_app(config='config'):
     app = Flask(__name__)
     app.config.from_object('config')
     configure_database(app)
-    socketio = configure_socket(app)
     from algorithms.pytsp import pyTSP
     tsp = pyTSP()
     import_cities()
-    return app, socketio, tsp
+    return app, tsp
 
 
-app, socketio, tsp = create_app()
+app, tsp = create_app()
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -72,8 +63,7 @@ def index():
     return render_template(
         'index.html',
         view=view,
-        cities=cities,
-        async_mode=socketio.async_mode
+        cities=cities
         )
 
 
@@ -83,15 +73,5 @@ def algorithm(algorithm):
     return jsonify(*getattr(tsp, algorithm)(), False)
 
 
-@socketio.on('genetic_algorithm')
-def genetic_algorithm(data):
-    if 'generation' not in session:
-        session['generation'] = []
-    session['generation'], best, length = tsp.cycle(session['generation'], **data)
-    if length < session['best']:
-        session['best'] = length
-        emit('draw', ([best], [length], True))
-
-
 if __name__ == '__main__':
-    socketio.run(app)
+    app.run()

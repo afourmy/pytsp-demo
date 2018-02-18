@@ -53,8 +53,6 @@
   <script src="{{ url_for('static', filename='bootstrap/bootstrap.min.js') }}"></script>
   <!-- Bootstrap slider -->
   <script src="{{ url_for('static', filename='bootstrap-slider/bootstrap-slider.min.js') }}"></script>
-  <!-- Socket IO -->
-  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.min.js"></script>
   {% if view == '2D' %}
     <script src="{{ url_for('static', filename='leaflet/leaflet.js') }}"></script>
   {% else %}
@@ -173,8 +171,6 @@
     <div id="earth" style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%;">
   {% endif %}
   <script>
-    namespace = '/';
-    var socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port + namespace);
     var currentAlgorithm = undefined;
 
     function tourConstruction(algorithm){
@@ -196,23 +192,6 @@
     var generationNumber = 0;
     function geneticAlgorithm() {
       clearAll();
-      // we cannot use setInterval as the timer depends on the slider
-      // we have to use setTimeout for the speed to vary through time
-      function timeout() {
-        var speed = $('#slider2').val();
-        window.optimizationTimer = setTimeout(function () {
-          generationNumber += 1;
-          $('#generation').text('Genetic algorithm (' + generationNumber + ')');
-          socket.emit('genetic_algorithm', {
-            mr: $('#mutation_rate').slider('getValue'),
-            cr: $('#crossover_rate').slider('getValue'),
-            mutation: $('#mutation').text(),
-            crossover: $('#crossover').text()
-            });
-          timeout();
-          }, 50000/speed);
-        };
-      timeout();
       }
 
     var layers = {
@@ -263,10 +242,6 @@
     });
     
     // creation of the socket listener
-  
-    socket.on('draw', function(paths, lengths, best) {
-      draw(paths, lengths, best);
-      });
 
     /* The following part is made of the code that depends on the dimension
     - Initialization of the map (resp. globe) and drawing of the icons
