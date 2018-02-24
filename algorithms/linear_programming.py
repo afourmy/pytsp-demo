@@ -1,7 +1,11 @@
 from .base_algorithm import *
-from cvxopt import matrix, glpk, solvers
 from itertools import chain, combinations
-from numpy import concatenate, eye, float, full, ones, vstack, zeros
+try:
+    from cvxopt import matrix, glpk, solvers
+    from numpy import concatenate, eye, float, full, ones, vstack, zeros
+except ImportError:
+    import warnings
+    warnings.warn('cvxopt/numpy import failed: linear programming will not work')
 
 
 class LinearProgramming(BaseAlgorithm):
@@ -23,12 +27,12 @@ class LinearProgramming(BaseAlgorithm):
         return tour[:-1]
 
     def ILP_solver(self):
-        n, sx = len(distances), len(distances)*(len(distances) - 1)//2
-        c = [float(distances[i+1][j+1]) for i in range(n) for j in range(i + 1, n)]
+        n, sx = len(self.distances), len(self.distances)*(len(self.distances) - 1)//2
+        c = [float(self.distances[i+1][j+1]) for i in range(n) for j in range(i + 1, n)]
         G, h, A, b = [], [], [], full(n, 2, dtype=float)
         for st in chain.from_iterable(combinations(range(n), r) for r in range(2, n)):
             G += [[float(i in st and j in st) for i in range(n) for j in range(i + 1, n)]]
-            h.append(float(len(st) - 1))
+            h.append(-float(1 - len(st)))
         for k in range(n):
             A.append([float(k in (i, j)) for i in range(n) for j in range(i + 1, n)])
         A, G, b, c, h = map(matrix, (A, G, b, c, h))

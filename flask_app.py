@@ -1,15 +1,21 @@
+from collections import OrderedDict
 from threading import Lock
 from flask import Flask, jsonify, render_template, request, session
+from flask_socketio import emit, SocketIO
 from json import dumps, load
 from os.path import abspath, dirname, join
 from sqlalchemy import exc as sql_exception
 from sys import dont_write_bytecode, path
+from werkzeug.utils import secure_filename
+from xlrd import open_workbook
+from xlrd.biffh import XLRDError
 
 dont_write_bytecode = True
 path_app = dirname(abspath(__file__))
 if path_app not in path:
     path.append(path_app)
 
+from algorithms.pytsp import pyTSP
 from database import db, create_database
 from models import City
 
@@ -23,10 +29,17 @@ def configure_database(app):
     db.init_app(app)
 
 
+def configure_socket(app):
+    async_mode = None
+    socketio = SocketIO(app, async_mode=async_mode)
+    thread_lock = Lock()
+    return socketio
+
+
 def import_cities():
     with open(join(path_app, 'data', 'cities.json')) as data:
         for city_dict in load(data):
-            if int(city_dict['population']) < 800000:
+            if int(city_dict['population']) < 900000:
                 continue
             city = City(**city_dict)
             db.session.add(city)
@@ -35,17 +48,24 @@ def import_cities():
         except sql_exception.IntegrityError:
             db.session.rollback()
 
-def create_app(config='config'):
+
+def create_app():
     app = Flask(__name__)
-    app.config.from_object('config')
+    app.config['SECRET_KEY'] = 'key'
     configure_database(app)
-    from algorithms.pytsp import pyTSP
-    tsp = pyTSP()
+    socketio = configure_socket(app)
     import_cities()
-    return app, tsp
+    tsp = pyTSP()
+    return app, socketio, tsp
 
 
-app, tsp = create_app()
+app, socketio, tsp = create_app()
+
+
+def allowed_file(name, allowed_extensions):
+    allowed_syntax = '.' in name
+    allowed_extension = name.rsplit('.', 1)[1].lower() in allowed_extensions
+    return allowed_syntax and allowed_extension
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -54,24 +74,35 @@ def index():
     session['crossover'], session['mutation'] = 'OC', 'Swap'
     view = request.form['view'] if 'view' in request.form else '2D'
     cities = {
-        city.id: {
-            property: getattr(city, property)
+        city.id: OrderedDict([
+            (property, getattr(city, property))
             for property in City.properties
-            }
+            ])
         for city in City.query.all()
         }
     return render_template(
         'index.html',
         view=view,
-        cities=cities
+        cities=cities,
+        async_mode=socketio.async_mode
         )
 
 
 @app.route('/<algorithm>', methods=['POST'])
 def algorithm(algorithm):
     session['best'] = float('inf')
-    return jsonify(*getattr(tsp, algorithm)(), False)
+    return jsonify(*getattr(tsp, algorithm)())
+
+
+@socketio.on('genetic_algorithm')
+def genetic_algorithm(data):
+    if 'generation' not in session:
+        session['generation'] = []
+    session['generation'], best, length = tsp.cycle(session['generation'], **data)
+    if length < session['best']:
+        session['best'] = length
+        emit('draw', ([best], [length]))
 
 
 if __name__ == '__main__':
-    app.run()
+    socketio.run(app)
